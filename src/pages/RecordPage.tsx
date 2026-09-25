@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
+import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send, Construction } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
@@ -22,9 +22,11 @@ const initialForm: SceneFormData = {
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
+  const getActiveClosureFor = useSceneStore((s) => s.getActiveClosureFor)
   const [form, setForm] = useState<SceneFormData>(initialForm)
   const [now, setNow] = useState(new Date())
   const [showSuccess, setShowSuccess] = useState(false)
+  const [blockedReason, setBlockedReason] = useState('')
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -36,9 +38,20 @@ export default function RecordPage() {
   const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }))
 
+  // 输入中的线路若正处于封路中，实时给出拦截原因
+  const activeClosure = form.routeName.trim()
+    ? getActiveClosureFor(form.routeName.trim())
+    : null
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    saveScene(form)
+    const result = saveScene({ ...form, routeName: form.routeName.trim() })
+    if (result.ok === false) {
+      // 兜底：即便提示条未及时出现，保存动作仍会被拦下并说明原因
+      setBlockedReason(result.reason)
+      return
+    }
+    setBlockedReason('')
     setShowSuccess(true)
     setTimeout(() => {
       setShowSuccess(false)
@@ -78,6 +91,23 @@ export default function RecordPage() {
               <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.segment} onChange={(e) => update('segment', e.target.value)} required />
             </div>
           </div>
+          {activeClosure && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200">
+              <Construction className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+              <div>
+                <p className="font-medium">「{activeClosure.routeName}」正在封路，暂不能保存窗景</p>
+                <p className="text-xs text-amber-200/80 mt-0.5">
+                  封路原因：{activeClosure.reason}（{formatTimestamp(activeClosure.closedAt)} 起）
+                </p>
+              </div>
+            </div>
+          )}
+          {blockedReason && !activeClosure && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-200">
+              <Construction className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+              <p>该线路正在封路（{blockedReason}），保存已被拦截，请恢复通行后再记录</p>
+            </div>
+          )}
           <div>
             <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Armchair className="w-3 h-3" />座位方向</label>
             <div className="flex gap-2">
@@ -146,9 +176,14 @@ export default function RecordPage() {
           <span>{formatTimestamp(now.toISOString())}</span>
         </div>
 
-        <button type="submit"
-          className="w-full py-3 rounded-xl bg-dusk-400 text-teal-950 font-medium text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition">
-          <Send className="w-4 h-4" />保存记录
+        <button type="submit" disabled={!!activeClosure}
+          className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition ${
+            activeClosure
+              ? 'bg-teal-800 text-mist-500 cursor-not-allowed'
+              : 'bg-dusk-400 text-teal-950 active:scale-[0.98]'
+          }`}>
+          {activeClosure ? <Construction className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+          {activeClosure ? '封路中，无法保存' : '保存记录'}
         </button>
       </form>
     </div>

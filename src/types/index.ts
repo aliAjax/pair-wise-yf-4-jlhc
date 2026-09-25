@@ -29,3 +29,16 @@ export interface SceneFormData {
   pedestrianStatus: PedestrianStatus
   note: string
 }
+
+/**
+ * 线路封路记录。
+ * 已恢复（recoveredAt 非空）的记录会保留在时间线上，用于呈现采样空档；
+ * recoveredAt 为 null 表示该线路当前仍在封路中，同一线路至多只有一条这样的记录。
+ */
+export interface RouteClosure {
+  id: string
+  routeName: string
+  reason: string
+  closedAt: string
+  recoveredAt: string | null
+}
