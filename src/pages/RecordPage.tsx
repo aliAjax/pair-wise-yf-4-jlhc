@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
+import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send, Ban } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { useClosureStore } from '@/store/useClosureStore'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
 
@@ -22,22 +23,38 @@ const initialForm: SceneFormData = {
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
+  const loadClosures = useClosureStore((s) => s.loadClosures)
+  const getActiveClosure = useClosureStore((s) => s.getActiveClosure)
   const [form, setForm] = useState<SceneFormData>(initialForm)
   const [now, setNow] = useState(new Date())
   const [showSuccess, setShowSuccess] = useState(false)
+  const [blockReason, setBlockReason] = useState<string | null>(null)
 
   useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { loadClosures() }, [loadClosures])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
     return () => clearInterval(timer)
   }, [])
 
-  const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
+  const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: val }))
+    if (key === 'routeName') setBlockReason(null)
+  }
+
+  // 处在封路中的线路，记录页保存时需要拦住
+  const activeClosure = form.routeName.trim()
+    ? getActiveClosure(form.routeName.trim())
+    : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const closure = getActiveClosure(form.routeName.trim())
+    if (closure) {
+      setBlockReason(closure.reason)
+      return
+    }
     saveScene(form)
     setShowSuccess(true)
     setTimeout(() => {
@@ -71,7 +88,16 @@ export default function RecordPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Bus className="w-3 h-3" />线路</label>
-              <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.routeName} onChange={(e) => update('routeName', e.target.value)} required />
+              <input className={`w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 ${activeClosure ? 'border border-amber-500/70 focus:ring-amber-500' : 'focus:ring-dusk-400'}`} value={form.routeName} onChange={(e) => update('routeName', e.target.value)} required />
+              {activeClosure && (
+                <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+                  <Ban className="mt-0.5 w-3 h-3 shrink-0" />
+                  <span>
+                    该线路正在封路中，暂无法保存记录
+                    {activeClosure.reason && `（原因：${activeClosure.reason}）`}
+                  </span>
+                </p>
+              )}
             </div>
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" />区间</label>
@@ -146,9 +172,23 @@ export default function RecordPage() {
           <span>{formatTimestamp(now.toISOString())}</span>
         </div>
 
+        {blockReason !== null && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <Ban className="mt-0.5 w-4 h-4 shrink-0 text-amber-400" />
+            <div>
+              <p className="font-medium">线路封路中，记录未保存</p>
+              <p className="mt-0.5 text-xs text-amber-300/90">
+                {blockReason
+                  ? `封路原因：${blockReason}`
+                  : '该线路尚未恢复通行，请在时间线页恢复后再记录'}
+              </p>
+            </div>
+          </div>
+        )}
+
         <button type="submit"
-          className="w-full py-3 rounded-xl bg-dusk-400 text-teal-950 font-medium text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition">
-          <Send className="w-4 h-4" />保存记录
+          className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition ${activeClosure ? 'bg-teal-800 text-mist-400 cursor-not-allowed' : 'bg-dusk-400 text-teal-950'}`}>
+          <Send className="w-4 h-4" />{activeClosure ? '线路封路中，无法保存' : '保存记录'}
         </button>
       </form>
     </div>

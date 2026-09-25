@@ -29,3 +29,5 @@ export interface SceneFormData {
   pedestrianStatus: PedestrianStatus
   note: string
 }
+
+export type { ClosureRecord } from './closure'
